@@ -15,6 +15,7 @@ type Config struct {
 	PathPrefix string `env:"PATH_PREFIX" envDefault:"/"`
 	Target     string `env:"TARGET"      envDefault:""`
 	TLSConfig  *tls.Config
+	DTLSConfig *dtls.Config
 }
 
 func NewConfig(opts env.Options) (Config, error) {
@@ -29,6 +30,11 @@ func NewConfig(opts env.Options) (Config, error) {
 	}
 
 	c.TLSConfig, err = mptls.Load(&cfg)
+	if err != nil {
+		return Config{}, err
+	}
+
+	c.DTLSConfig, err = mptls.LoadDTLS(&cfg)
 	if err != nil {
 		return Config{}, err
 	}

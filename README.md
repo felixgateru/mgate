@@ -122,6 +122,8 @@ mProxy is used to proxy requests to a backend server. For the example setup, we 
    - mProxy server for `HTTP protocol without TLS` on port `8086` with prefix path `/messages`
    - mProxy server for `HTTP protocol with TLS` on port `8087` with prefix path `/messages`
    - mProxy server for `HTTP protocol with mTLS` on port `8088` with prefix path `/messages`
+   - mProxy server for `COAP protocol without DTLS` on port `5682` 
+   - mProxy server for `COAP protocol with DTLS` on port `5684`
 
 ### Example testing of mProxy
 
