@@ -66,7 +66,7 @@ func main() {
 	}
 
 	// mProxy server for MQTT without TLS
-	mqttProxy := mqtt.New(mqttConfig, handler, interceptor, logger)
+	mqttProxy := mqtt.NewProxy(mqttConfig, handler, interceptor, logger)
 	g.Go(func() error {
 		return mqttProxy.Listen(ctx)
 	})
@@ -78,7 +78,7 @@ func main() {
 	}
 
 	// mProxy server for MQTT with TLS
-	mqttTLSProxy := mqtt.New(mqttTLSConfig, handler, interceptor, logger)
+	mqttTLSProxy := mqtt.NewProxy(mqttTLSConfig, handler, interceptor, logger)
 	g.Go(func() error {
 		return mqttTLSProxy.Listen(ctx)
 	})
@@ -90,7 +90,7 @@ func main() {
 	}
 
 	// mProxy server for MQTT with mTLS
-	mqttMTlsProxy := mqtt.New(mqttMTLSConfig, handler, interceptor, logger)
+	mqttMTlsProxy := mqtt.NewProxy(mqttMTLSConfig, handler, interceptor, logger)
 	g.Go(func() error {
 		return mqttMTlsProxy.Listen(ctx)
 	})
@@ -102,7 +102,7 @@ func main() {
 	}
 
 	// mProxy server for MQTT over Websocket without TLS
-	wsProxy := websocket.New(wsConfig, handler, interceptor, logger)
+	wsProxy := websocket.NewProxy(wsConfig, handler, interceptor, logger)
 	g.Go(func() error {
 		return wsProxy.Listen(ctx)
 	})
@@ -114,7 +114,7 @@ func main() {
 	}
 
 	// mProxy server for MQTT over Websocket with TLS
-	wsTLSProxy := websocket.New(wsTLSConfig, handler, interceptor, logger)
+	wsTLSProxy := websocket.NewProxy(wsTLSConfig, handler, interceptor, logger)
 	g.Go(func() error {
 		return wsTLSProxy.Listen(ctx)
 	})
@@ -126,7 +126,7 @@ func main() {
 	}
 
 	// mProxy server for MQTT over Websocket with mTLS
-	wsMTLSProxy := websocket.New(wsMTLSConfig, handler, interceptor, logger)
+	wsMTLSProxy := websocket.NewProxy(wsMTLSConfig, handler, interceptor, logger)
 	g.Go(func() error {
 		return wsMTLSProxy.Listen(ctx)
 	})
@@ -183,7 +183,7 @@ func main() {
 	}
 
 	// mProxy server for CoAP without DTLS
-	coapProxy := coap.New(coapConfig, handler, logger)
+	coapProxy := coap.NewProxy(coapConfig, handler, logger)
 	g.Go(func() error {
 		return coapProxy.Listen(ctx)
 	})
@@ -195,7 +195,7 @@ func main() {
 	}
 
 	// mProxy server for CoAP with DTLS
-	coapDTLSProxy := coap.New(coapDTLSConfig, handler, logger)
+	coapDTLSProxy := coap.NewProxy(coapDTLSConfig, handler, logger)
 	g.Go(func() error {
 		return coapDTLSProxy.ListenDTLS(ctx)
 	})
