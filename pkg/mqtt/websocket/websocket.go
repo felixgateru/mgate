@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/absmach/mproxy"
-	"github.com/absmach/mproxy/pkg/session"
-	mptls "github.com/absmach/mproxy/pkg/tls"
+	"github.com/1998-felix/mproxy"
+	"github.com/1998-felix/mproxy/pkg/session"
+	mptls "github.com/1998-felix/mproxy/pkg/tls"
 	"github.com/gorilla/websocket"
 	"golang.org/x/sync/errgroup"
 )

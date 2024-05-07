@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/absmach/mproxy/examples/client/websocket"
+	"github.com/1998-felix/mproxy/examples/client/websocket"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 

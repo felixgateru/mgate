@@ -8,9 +8,9 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/absmach/mproxy/pkg/tls/verifier"
-	"github.com/absmach/mproxy/pkg/tls/verifier/crl"
-	"github.com/absmach/mproxy/pkg/tls/verifier/ocsp"
+	"github.com/1998-felix/mproxy/pkg/tls/verifier"
+	"github.com/1998-felix/mproxy/pkg/tls/verifier/crl"
+	"github.com/1998-felix/mproxy/pkg/tls/verifier/ocsp"
 	"github.com/caarlos0/env/v11"
 )
 

@@ -4,7 +4,7 @@
 package tls
 
 import (
-	"github.com/absmach/mproxy/pkg/tls/verifier"
+	"github.com/1998-felix/mproxy/pkg/tls/verifier"
 	"github.com/caarlos0/env/v11"
 )
 

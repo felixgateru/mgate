@@ -1,4 +1,4 @@
-module github.com/absmach/mproxy
+module github.com/1998-felix/mproxy
 
 go 1.21
 

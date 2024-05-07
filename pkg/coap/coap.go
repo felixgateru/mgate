@@ -10,8 +10,8 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/absmach/mproxy"
-	"github.com/absmach/mproxy/pkg/session"
+	"github.com/1998-felix/mproxy"
+	"github.com/1998-felix/mproxy/pkg/session"
 	"github.com/plgd-dev/go-coap/v3/dtls"
 	"github.com/plgd-dev/go-coap/v3/message"
 	"github.com/plgd-dev/go-coap/v3/message/codes"
