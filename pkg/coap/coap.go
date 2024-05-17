@@ -20,6 +20,8 @@ import (
 	"github.com/plgd-dev/go-coap/v3/net"
 	"github.com/plgd-dev/go-coap/v3/options"
 	"github.com/plgd-dev/go-coap/v3/udp"
+	"github.com/plgd-dev/go-coap/v3/udp/client"
+	udpServer "github.com/plgd-dev/go-coap/v3/udp/server"
 )
 
 type Proxy struct {
@@ -37,7 +39,7 @@ func NewProxy(config mproxy.Config, handler session.Handler, logger *slog.Logger
 }
 
 func sendErrorMessage(cc mux.Conn, token []byte, err error, code codes.Code) error {
-	m := cc.AcquireMessage(cc.Context())
+	m := cc.AcquireMessage(context.Background())
 	defer cc.ReleaseMessage(m)
 	m.SetCode(code)
 	m.SetBody(bytes.NewReader(([]byte)(err.Error())))
@@ -46,7 +48,7 @@ func sendErrorMessage(cc mux.Conn, token []byte, err error, code codes.Code) err
 	return cc.WriteMessage(m)
 }
 
-func (p *Proxy) postUpstream(cc mux.Conn, req *mux.Message, token []byte) error {
+func (p *Proxy) postUpstream(cc mux.Conn, out *client.Conn, req *mux.Message, token []byte) error {
 	format, err := req.ContentFormat()
 	if err != nil {
 		return err
@@ -56,31 +58,20 @@ func (p *Proxy) postUpstream(cc mux.Conn, req *mux.Message, token []byte) error 
 		return err
 	}
 
-	targetConn, err := udp.Dial(p.config.Target)
+	pm, err := out.Post(cc.Context(), path, format, req.Body(), req.Options()...)
 	if err != nil {
-		return err
-	}
-	defer targetConn.Close()
-	pm, err := targetConn.Post(cc.Context(), path, format, req.Body(), req.Options()...)
-	if err != nil {
-		return err
+		return errors.Join(errors.New("Error posting to target"), err)
 	}
 	pm.SetToken(token)
 	return cc.WriteMessage(pm)
 }
 
-func (p *Proxy) getUpstream(cc mux.Conn, req *mux.Message, token []byte) error {
+func (p *Proxy) getUpstream(cc mux.Conn, out *client.Conn, req *mux.Message, token []byte) error {
 	path, err := req.Options().Path()
 	if err != nil {
 		return err
 	}
-
-	targetConn, err := udp.Dial(p.config.Target)
-	if err != nil {
-		return err
-	}
-	defer targetConn.Close()
-	pm, err := targetConn.Get(cc.Context(), path, req.Options()...)
+	pm, err := out.Get(cc.Context(), path, req.Options()...)
 	if err != nil {
 		return err
 	}
@@ -88,17 +79,10 @@ func (p *Proxy) getUpstream(cc mux.Conn, req *mux.Message, token []byte) error {
 	return cc.WriteMessage(pm)
 }
 
-func (p *Proxy) observeUpstream(ctx context.Context, cc mux.Conn, opts []message.Option, token []byte, path string) {
-	targetConn, err := udp.Dial(p.config.Target)
-	if err != nil {
-		if err := sendErrorMessage(cc, token, err, codes.BadGateway); err != nil {
-			p.logger.Error("cannot send error response: %v", err)
-		}
-	}
-	defer targetConn.Close()
+func (p *Proxy) observeUpstream(ctx context.Context, cc mux.Conn, out *client.Conn, opts []message.Option, token []byte, path string) {
 	doneObserving := make(chan struct{})
 
-	obs, err := targetConn.Observe(ctx, path, func(req *pool.Message) {
+	obs, err := out.Observe(ctx, path, func(req *pool.Message) {
 		req.SetToken(token)
 		if err := cc.WriteMessage(req); err != nil {
 			if err := sendErrorMessage(cc, token, err, codes.BadGateway); err != nil {
@@ -127,14 +111,18 @@ func (p *Proxy) observeUpstream(ctx context.Context, cc mux.Conn, opts []message
 }
 
 func (p *Proxy) handler(w mux.ResponseWriter, r *mux.Message) {
+	w.Conn().AddOnClose(func() {
+		p.logger.Info("Client connection closed")
+	})
 	tok, err := r.Options().GetBytes(message.URIQuery)
+	p.logger.Info("This is the valeu of the session token", slog.String("token", string(tok)))
 	if err != nil {
 		if err := sendErrorMessage(w.Conn(), r.Token(), err, codes.Unauthorized); err != nil {
 			p.logger.Error(err.Error())
 		}
 		return
 	}
-	ctx := session.NewContext(r.Context(), &session.Session{Password: tok})
+	ctx := session.NewContext(context.Background(), &session.Session{Password: tok})
 	if err := p.session.AuthConnect(ctx); err != nil {
 		if err := sendErrorMessage(w.Conn(), r.Token(), err, codes.Unauthorized); err != nil {
 			p.logger.Error(err.Error())
@@ -148,6 +136,18 @@ func (p *Proxy) handler(w mux.ResponseWriter, r *mux.Message) {
 		}
 		return
 	}
+	targetConn, err := udp.Dial(p.config.Target)
+	if err != nil {
+		if err := sendErrorMessage(w.Conn(), r.Token(), err, codes.BadGateway); err != nil {
+			p.logger.Error(err.Error())
+		}
+		return
+	}
+	targetConn.AddOnClose(func() {
+		p.logger.Info("Target connection closed")
+	})
+	targetConn.Close()
+	p.logger.Info("Received request for path")
 	switch r.Code() {
 	case codes.GET:
 		obs, err := r.Options().Observe()
@@ -157,7 +157,9 @@ func (p *Proxy) handler(w mux.ResponseWriter, r *mux.Message) {
 			}
 			return
 		}
-		p.handleGet(ctx, path, w.Conn(), r.Token(), obs, r)
+		var targetConn *client.Conn
+		p.handleGet(ctx, path, w.Conn(), targetConn, r.Token(), obs, r)
+		p.logger.Info("Received POST request for path")
 
 	case codes.POST:
 		body, err := r.ReadBody()
@@ -167,11 +169,13 @@ func (p *Proxy) handler(w mux.ResponseWriter, r *mux.Message) {
 			}
 			return
 		}
-		p.handlePost(ctx, w.Conn(), body, r.Token(), path, r)
+		p.logger.Info("Received POST request for path")
+		p.logger.Info("This is the value of tagetConn", slog.Any("targetConn", targetConn.LocalAddr()))
+		p.handlePost(ctx, w.Conn(), targetConn, body, r.Token(), path, r)
 	}
 }
 
-func (p *Proxy) handleGet(ctx context.Context, path string, con mux.Conn, token []byte, obs uint32, r *mux.Message) {
+func (p *Proxy) handleGet(ctx context.Context, path string, con mux.Conn, out *client.Conn, token []byte, obs uint32, r *mux.Message) {
 	if err := p.session.AuthSubscribe(ctx, &[]string{path}); err != nil {
 		if err := sendErrorMessage(con, token, err, codes.Unauthorized); err != nil {
 			p.logger.Error(err.Error())
@@ -187,10 +191,10 @@ func (p *Proxy) handleGet(ctx context.Context, path string, con mux.Conn, token 
 	switch {
 	// obs == 0, start observe
 	case obs == 0:
-		go p.observeUpstream(ctx, con, r.Options(), token, path)
+		p.observeUpstream(ctx, con, out, r.Options(), token, path)
 
 	default:
-		if err := p.getUpstream(con, r, token); err != nil {
+		if err := p.getUpstream(con, out, r, token); err != nil {
 			p.logger.Error(fmt.Sprintf("error performing get: %v\n", err))
 			if err := sendErrorMessage(con, token, err, codes.BadGateway); err != nil {
 				p.logger.Error(err.Error())
@@ -200,7 +204,7 @@ func (p *Proxy) handleGet(ctx context.Context, path string, con mux.Conn, token 
 	}
 }
 
-func (p *Proxy) handlePost(ctx context.Context, con mux.Conn, body, token []byte, path string, r *mux.Message) {
+func (p *Proxy) handlePost(ctx context.Context, con mux.Conn, out *client.Conn, body, token []byte, path string, r *mux.Message) {
 	if err := p.session.AuthPublish(ctx, &path, &body); err != nil {
 		if err := sendErrorMessage(con, token, err, codes.Unauthorized); err != nil {
 			p.logger.Error(err.Error())
@@ -213,13 +217,14 @@ func (p *Proxy) handlePost(ctx context.Context, con mux.Conn, body, token []byte
 		}
 		return
 	}
-	if err := p.postUpstream(con, r, token); err != nil {
-		p.logger.Debug(fmt.Sprintf("error performing post: %v\n", err))
+	if err := p.postUpstream(con, out, r, token); err != nil {
+		p.logger.Info(fmt.Sprintf("error performing post: %v\n", err))
 		if err := sendErrorMessage(con, token, err, codes.BadGateway); err != nil {
-			p.logger.Error(err.Error())
+			p.logger.Info(fmt.Sprintf("Post upstream failed with error: %s", err.Error()))
 		}
 		return
 	}
+	p.logger.Info("Post upstream successful")
 }
 
 func (p *Proxy) Listen(ctx context.Context) error {
@@ -232,7 +237,10 @@ func (p *Proxy) Listen(ctx context.Context) error {
 		defer l.Close()
 
 		p.logger.Info(fmt.Sprintf("CoAP proxy server started at %s without DTLS", p.config.Address))
-		s := udp.NewServer(options.WithMux(mux.HandlerFunc(p.handler)))
+		var dialOpts []udpServer.Option
+		dialOpts = append(dialOpts, options.WithMux(mux.HandlerFunc(p.handler)), NewUDPNilMonitor())
+
+		s := udp.NewServer(dialOpts...)
 
 		errCh := make(chan error)
 		go func() {
@@ -275,4 +283,16 @@ func (p *Proxy) Listen(ctx context.Context) error {
 	default:
 		return errors.New("unsupported CoAP configuration")
 	}
+}
+
+type udpNilMonitor struct{}
+
+func (u *udpNilMonitor) UDPServerApply(cfg *udpServer.Config) {
+	cfg.CreateInactivityMonitor = nil
+}
+
+var _ udpServer.Option = (*udpNilMonitor)(nil)
+
+func NewUDPNilMonitor() udpServer.Option {
+	return &udpNilMonitor{}
 }
