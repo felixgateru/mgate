@@ -15,7 +15,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/absmach/mproxy/pkg/tls/verifier"
+	"github.com/felixgateru/mproxy/pkg/tls/verifier"
 	"github.com/caarlos0/env/v11"
 )
 

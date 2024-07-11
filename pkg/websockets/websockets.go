@@ -10,7 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/absmach/mproxy/pkg/session"
+	"github.com/felixgateru/mproxy/pkg/session"
 	"github.com/gorilla/websocket"
 	"golang.org/x/sync/errgroup"
 )
