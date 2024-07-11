@@ -68,6 +68,7 @@ func stream(ctx context.Context, dir Direction, r, w net.Conn, h Handler, ic Int
 			if p, ok := pkt.(*packets.PublishPacket); ok {
 				if err = h.AuthPublish(ctx, &p.TopicName, &p.Payload); err != nil {
 					pkt = packets.NewControlPacket(packets.Disconnect).(*packets.DisconnectPacket)
+					fmt.Println("Sent disconnect packet")
 					err = pkt.Write(w)
 					errs <- wrap(ctx, err, dir)
 					return
