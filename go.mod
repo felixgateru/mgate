@@ -6,6 +6,7 @@ toolchain go1.21.4
 
 require (
 	github.com/caarlos0/env/v11 v11.0.0
+	github.com/dustin/go-coap v0.0.0-20190908170653-752e0f79981e
 	github.com/eclipse/paho.mqtt.golang v1.4.3
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.1
