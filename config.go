@@ -8,13 +8,15 @@ import (
 
 	mptls "github.com/absmach/mproxy/pkg/tls"
 	"github.com/caarlos0/env/v11"
+	"github.com/pion/dtls/v2"
 )
 
 type Config struct {
 	Address    string `env:"ADDRESS"     envDefault:""`
-	PathPrefix string `env:"PATH_PREFIX" envDefault:""`
+	PathPrefix string `env:"PATH_PREFIX" envDefault:"/"`
 	Target     string `env:"TARGET"      envDefault:""`
 	TLSConfig  *tls.Config
+	DTLSConfig *dtls.Config
 }
 
 func NewConfig(opts env.Options) (Config, error) {
@@ -27,8 +29,11 @@ func NewConfig(opts env.Options) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-
-	c.TLSConfig, err = mptls.Load(&cfg)
+	c.TLSConfig, err = mptls.LoadTLSConfig(&cfg, &tls.Config{})
+	if err != nil {
+		return Config{}, err
+	}
+	c.DTLSConfig, err = mptls.LoadTLSConfig(&cfg, &dtls.Config{})
 	if err != nil {
 		return Config{}, err
 	}
