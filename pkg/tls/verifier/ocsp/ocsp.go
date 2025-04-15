@@ -15,7 +15,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/absmach/mgate/pkg/tls/verifier"
+	"github.com/felixgateru/mgate/pkg/tls/verifier"
 	"github.com/caarlos0/env/v11"
 	"golang.org/x/crypto/ocsp"
 )

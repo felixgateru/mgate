@@ -55,7 +55,7 @@ Available as a library for integration into existing applications.
 ## Usage
 
 ```bash
-git clone https://github.com/absmach/mgate.git
+git clone https://github.com/felixgateru/mgate.git
 cd mgate
 make
 ./build/mgate
@@ -332,7 +332,7 @@ To add a prefix to environmental variables, use `env.Options{Prefix: "MGATE_"}` 
 package main
 import (
   "github.com/caarlos0/env/v11"
-  "github.com/absmach/mgate"
+  "github.com/felixgateru/mgate"
 )
 
 mqttConfig := mgate.Config{}
@@ -365,6 +365,6 @@ For instance:
 
 [Apache-2.0](LICENSE)
 
-[grc]: https://goreportcard.com/badge/github.com/absmach/mgate
+[grc]: https://goreportcard.com/badge/github.com/felixgateru/mgate
 [LIC]: LICENCE
 [LIC-BADGE]: https://img.shields.io/badge/License-Apache_2.0-blue.svg

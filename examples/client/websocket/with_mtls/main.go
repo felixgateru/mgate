@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/absmach/mgate/examples/client/websocket"
+	"github.com/felixgateru/mgate/examples/client/websocket"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 

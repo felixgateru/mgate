@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/absmach/mgate"
-	"github.com/absmach/mgate/pkg/session"
-	mptls "github.com/absmach/mgate/pkg/tls"
+	"github.com/felixgateru/mgate"
+	"github.com/felixgateru/mgate/pkg/session"
+	mptls "github.com/felixgateru/mgate/pkg/tls"
 	"github.com/gorilla/websocket"
 	"golang.org/x/sync/errgroup"
 )

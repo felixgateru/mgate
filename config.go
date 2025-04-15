@@ -6,7 +6,7 @@ package mgate
 import (
 	"crypto/tls"
 
-	mptls "github.com/absmach/mgate/pkg/tls"
+	mptls "github.com/felixgateru/mgate/pkg/tls"
 	"github.com/caarlos0/env/v11"
 )
 
