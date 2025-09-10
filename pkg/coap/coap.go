@@ -11,6 +11,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/felixgateru/mgate"
@@ -32,6 +33,7 @@ const (
 type Conn struct {
 	clientAddr *net.UDPAddr
 	serverConn *net.UDPConn
+	started    atomic.Bool
 }
 
 type Proxy struct {
@@ -73,7 +75,6 @@ func (p *Proxy) proxyUDP(ctx context.Context, l *net.UDPConn) {
 					return
 				}
 				p.connMap[clientAddr.String()] = conn
-				go p.downUDP(ctx, l, conn)
 			}
 			p.mutex.Unlock()
 			//nolint:contextcheck // upUDP does not need context
@@ -151,8 +152,7 @@ func (p *Proxy) newConn(clientAddr *net.UDPAddr) (*Conn, error) {
 }
 
 func (p *Proxy) upUDP(conn *Conn, buffer []byte, l *net.UDPConn) {
-	msg, err := p.handleCoAPMessage(context.Background(), buffer)
-	if err != nil {
+	if msg, err := p.handleCoAPMessage(context.Background(), buffer); err != nil {
 		data := p.encodeErrorResponse(msg, err)
 		if len(data) > 0 {
 			if _, werr := l.WriteToUDP(data, conn.clientAddr); werr != nil {
@@ -161,9 +161,13 @@ func (p *Proxy) upUDP(conn *Conn, buffer []byte, l *net.UDPConn) {
 		}
 		return
 	}
-	_, err = conn.serverConn.Write(buffer)
+	_, err := conn.serverConn.Write(buffer)
 	if err != nil {
 		return
+	}
+	if conn.started.CompareAndSwap(false, true) {
+		fmt.Println("Starting downUDP for client", conn.clientAddr.String())
+		go p.downUDP(context.Background(), l, conn)
 	}
 }
 
