@@ -14,9 +14,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/absmach/mgate"
-	"github.com/absmach/mgate/pkg/session"
-	mptls "github.com/absmach/mgate/pkg/tls"
+	"github.com/felixgateru/mgate"
+	"github.com/felixgateru/mgate/pkg/session"
+	mptls "github.com/felixgateru/mgate/pkg/tls"
 	"github.com/pion/dtls/v3"
 	"github.com/plgd-dev/go-coap/v3/message"
 	"github.com/plgd-dev/go-coap/v3/message/codes"

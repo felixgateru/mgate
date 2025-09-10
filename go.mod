@@ -1,4 +1,4 @@
-module github.com/absmach/mgate
+module github.com/felixgateru/mgate
 
 go 1.25.0
 

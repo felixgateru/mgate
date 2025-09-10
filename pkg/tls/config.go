@@ -4,8 +4,8 @@
 package tls
 
 import (
-	"github.com/absmach/mgate/pkg/tls/verifier"
 	"github.com/caarlos0/env/v11"
+	"github.com/felixgateru/mgate/pkg/tls/verifier"
 )
 
 type Config struct {

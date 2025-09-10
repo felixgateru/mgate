@@ -11,7 +11,7 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/absmach/mgate/pkg/session"
+	"github.com/felixgateru/mgate/pkg/session"
 	"github.com/gorilla/websocket"
 	"golang.org/x/sync/errgroup"
 )

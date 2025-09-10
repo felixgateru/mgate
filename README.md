@@ -374,7 +374,7 @@ To add a prefix to environmental variables, use `env.Options{Prefix: "MGATE_"}` 
 package main
 import (
   "github.com/caarlos0/env/v11"
-  "github.com/absmach/mgate"
+  "github.com/felixgateru/mgate"
 )
 
 mqttConfig := mgate.Config{}
