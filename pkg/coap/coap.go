@@ -18,6 +18,7 @@ import (
 	"github.com/felixgateru/mgate/pkg/session"
 	mptls "github.com/felixgateru/mgate/pkg/tls"
 	"github.com/pion/dtls/v3"
+	"github.com/plgd-dev/go-coap/v3/message"
 	"github.com/plgd-dev/go-coap/v3/message/codes"
 	"github.com/plgd-dev/go-coap/v3/message/pool"
 	"github.com/plgd-dev/go-coap/v3/udp/coder"
@@ -88,8 +89,6 @@ func (p *Proxy) proxyUDP(ctx context.Context, l *net.UDPConn) {
 }
 
 func (p *Proxy) Listen(ctx context.Context) error {
-	fmt.Println("Starting COAP proxy...")
-	fmt.Println("Host:", p.config.Host, "Port:", p.config.Port)
 	addr, err := net.ResolveUDPAddr("udp", net.JoinHostPort(p.config.Host, p.config.Port))
 	if err != nil {
 		p.logger.Error("Failed to resolve UDP address", slog.Any("error", err))
@@ -118,7 +117,6 @@ func (p *Proxy) Listen(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		fmt.Println("Listening on ", l.LocalAddr().String())
 		defer l.Close()
 
 		g.Go(func() error {
@@ -159,8 +157,6 @@ func (p *Proxy) newConn(clientAddr *net.UDPAddr) (*Conn, error) {
 }
 
 func (p *Proxy) upUDP(conn *Conn, buffer []byte, l *net.UDPConn) {
-	fmt.Println("Got here before handleCoAPMessage")
-
 	msg, err := p.handleCoAPMessage(context.Background(), buffer)
 	if err != nil {
 		p.logger.Error("Failed to handle CoAP message", slog.Any("err", err))
@@ -173,9 +169,7 @@ func (p *Proxy) upUDP(conn *Conn, buffer []byte, l *net.UDPConn) {
 		return
 	}
 
-	fmt.Println("Writing to serverConn")
 	if _, err := conn.serverConn.Write(buffer); err != nil {
-		fmt.Println("Error writing to serverConn:", err)
 		return
 	}
 
@@ -196,18 +190,15 @@ func (p *Proxy) downUDP(ctx context.Context, l *net.UDPConn, conn *Conn) {
 		}
 		err := conn.serverConn.SetReadDeadline(time.Now().Add(10 * time.Second))
 		if err != nil {
-			fmt.Println("SetReadDeadline error:", err)
 			return
 		}
 		n, err := conn.serverConn.Read(buffer)
 		if err != nil {
 			p.closeConn(conn)
-			fmt.Println("Read error:", err)
 			return
 		}
 		_, err = l.WriteToUDP(buffer[:n], conn.clientAddr)
 		if err != nil {
-			fmt.Println("WriteToUDP error:", err)
 			return
 		}
 	}
@@ -385,7 +376,7 @@ func (p *Proxy) encodeErrorResponse(msg *pool.Message, code codes.Code) []byte {
 }
 
 func parseKey(msg *pool.Message) (string, error) {
-	authKey, err := msg.Options().GetString(15)
+	authKey, err := msg.Options().GetString(message.URIQuery)
 	if err != nil {
 		return "", err
 	}
