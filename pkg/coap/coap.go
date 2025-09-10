@@ -11,14 +11,12 @@ import (
 	"net"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/felixgateru/mgate"
 	"github.com/felixgateru/mgate/pkg/session"
 	mptls "github.com/felixgateru/mgate/pkg/tls"
 	"github.com/pion/dtls/v3"
-	"github.com/plgd-dev/go-coap/v3/message"
 	"github.com/plgd-dev/go-coap/v3/message/codes"
 	"github.com/plgd-dev/go-coap/v3/message/pool"
 	"github.com/plgd-dev/go-coap/v3/udp/coder"
@@ -34,7 +32,6 @@ const (
 type Conn struct {
 	clientAddr *net.UDPAddr
 	serverConn *net.UDPConn
-	started    atomic.Bool // starts downUDP after first successful upstream write
 }
 
 type Proxy struct {
@@ -61,38 +58,34 @@ func (p *Proxy) proxyUDP(ctx context.Context, l *net.UDPConn) {
 		case <-ctx.Done():
 			return
 		default:
-		}
-
-		n, clientAddr, err := l.ReadFromUDP(buffer)
-		if err != nil {
-			p.logger.Error("Failed to read from UDP", slog.Any("error", err))
-			return
-		}
-
-		p.mutex.Lock()
-		conn, ok := p.connMap[clientAddr.String()]
-		if !ok {
-			conn, err = p.newConn(clientAddr)
+			n, clientAddr, err := l.ReadFromUDP(buffer)
 			if err != nil {
-				p.mutex.Unlock()
-				p.logger.Error("Failed to create new connection", slog.Any("error", err))
-				continue
+				p.logger.Error("Failed to read from UDP", slog.String("err", err.Error()))
+				return
 			}
-			p.connMap[clientAddr.String()] = conn
-			// IMPORTANT (Option A): do NOT start downUDP here
+			p.mutex.Lock()
+			conn, ok := p.connMap[clientAddr.String()]
+			if !ok {
+				conn, err = p.newConn(clientAddr)
+				if err != nil {
+					p.mutex.Unlock()
+					p.logger.Error("Failed to create new connection", slog.String("err", err.Error()))
+					return
+				}
+				p.connMap[clientAddr.String()] = conn
+				go p.downUDP(ctx, l, conn)
+			}
+			p.mutex.Unlock()
+			//nolint:contextcheck // upUDP does not need context
+			p.upUDP(conn, buffer[:n], l)
 		}
-		p.mutex.Unlock()
-		// Send upstream; if first write succeeds, start the reader
-		p.upUDP(conn, buffer[:n], l)
 	}
 }
 
 func (p *Proxy) Listen(ctx context.Context) error {
-	fmt.Println("Starting COAP proxy...")
-	fmt.Println("Host:", p.config.Host, "Port:", p.config.Port)
 	addr, err := net.ResolveUDPAddr("udp", net.JoinHostPort(p.config.Host, p.config.Port))
 	if err != nil {
-		p.logger.Error("Failed to resolve UDP address", slog.Any("error", err))
+		p.logger.Error("Failed to resolve UDP address", slog.String("err", err.Error()))
 		return err
 	}
 	g, ctx := errgroup.WithContext(ctx)
@@ -118,7 +111,6 @@ func (p *Proxy) Listen(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		fmt.Println("Listening on ", l.LocalAddr().String())
 		defer l.Close()
 
 		g.Go(func() error {
@@ -159,30 +151,19 @@ func (p *Proxy) newConn(clientAddr *net.UDPAddr) (*Conn, error) {
 }
 
 func (p *Proxy) upUDP(conn *Conn, buffer []byte, l *net.UDPConn) {
-	fmt.Println("Got here before handleCoAPMessage")
-
 	msg, err := p.handleCoAPMessage(context.Background(), buffer)
 	if err != nil {
-		p.logger.Error("Failed to handle CoAP message", slog.Any("err", err))
-		data := p.encodeErrorResponse(msg, codes.BadRequest)
+		data := p.encodeErrorResponse(msg, err)
 		if len(data) > 0 {
 			if _, werr := l.WriteToUDP(data, conn.clientAddr); werr != nil {
-				p.logger.Error("Failed to send BadRequest CoAP message", slog.Any("err", werr))
+				p.logger.Error("Failed to send response", slog.String("err", werr.Error()))
 			}
 		}
 		return
 	}
-
-	fmt.Println("Writing to serverConn")
-	if _, err := conn.serverConn.Write(buffer); err != nil {
-		fmt.Println("Error writing to serverConn:", err)
+	_, err = conn.serverConn.Write(buffer)
+	if err != nil {
 		return
-	}
-
-	// Start the downstream reader once the first upstream write succeeds.
-	if conn.started.CompareAndSwap(false, true) {
-		fmt.Println("Starting downUDP for client", conn.clientAddr.String())
-		go p.downUDP(context.Background(), l, conn)
 	}
 }
 
@@ -197,18 +178,15 @@ func (p *Proxy) downUDP(ctx context.Context, l *net.UDPConn, conn *Conn) {
 		}
 		err := conn.serverConn.SetReadDeadline(time.Now().Add(10 * time.Second))
 		if err != nil {
-			fmt.Println("SetReadDeadline error:", err)
 			return
 		}
 		n, err := conn.serverConn.Read(buffer)
 		if err != nil {
 			p.closeConn(conn)
-			fmt.Println("Read error:", err)
 			return
 		}
 		_, err = l.WriteToUDP(buffer[:n], conn.clientAddr)
 		if err != nil {
-			fmt.Println("WriteToUDP error:", err)
 			return
 		}
 	}
@@ -227,14 +205,14 @@ func (p *Proxy) proxyDTLS(ctx context.Context, l net.Listener) {
 		case <-ctx.Done():
 			return
 		default:
+			conn, err := l.Accept()
+			if err != nil {
+				p.logger.Warn("Accept error " + err.Error())
+				continue
+			}
+			p.logger.Info("Accepted new client")
+			go p.handleDTLS(ctx, conn)
 		}
-		conn, err := l.Accept()
-		if err != nil {
-			p.logger.Warn("Accept error " + err.Error())
-			continue
-		}
-		p.logger.Info("Accepted new client")
-		go p.handleDTLS(ctx, conn)
 	}
 }
 
@@ -266,7 +244,7 @@ func (p *Proxy) handleDTLS(ctx context.Context, inbound net.Conn) {
 	})
 
 	if err := g.Wait(); err != nil {
-		p.logger.Error("DTLS proxy error", slog.Any("error", err))
+		p.logger.Error("DTLS proxy error", slog.String("err", err.Error()))
 	}
 }
 
@@ -278,16 +256,16 @@ func (p *Proxy) dtlsUp(ctx context.Context, outbound *net.UDPConn, inbound net.C
 			return
 		}
 		if msg, err := p.handleCoAPMessage(ctx, buffer[:n]); err != nil {
-			data := p.encodeErrorResponse(msg, codes.BadRequest)
+			data := p.encodeErrorResponse(msg, err)
 			if len(data) > 0 {
 				if _, werr := inbound.Write(data); werr != nil {
-					p.logger.Error("Failed to send BadRequest CoAP message", slog.Any("err", werr))
+					p.logger.Error("Failed to sendresponse", slog.String("err", werr.Error()))
 				}
 			}
 			return
 		}
-
-		if _, err = outbound.Write(buffer[:n]); err != nil {
+		_, err = outbound.Write(buffer[:n])
+		if err != nil {
 			return
 		}
 	}
@@ -305,7 +283,8 @@ func (p *Proxy) dtlsDown(inbound net.Conn, outbound *net.UDPConn) {
 			return
 		}
 
-		if _, err = inbound.Write(buffer[:n]); err != nil {
+		_, err = inbound.Write(buffer[:n])
+		if err != nil {
 			return
 		}
 	}
@@ -319,11 +298,10 @@ func (p *Proxy) handleCoAPMessage(ctx context.Context, buffer []byte) (*pool.Mes
 	if err != nil {
 		return msg, err
 	}
-	// authKey, err := parseKey(msg)
-	// if err != nil {
-	// 	return msg, err
-	// }
-	authKey := "betty1"
+	authKey, err := parseKey(msg)
+	if err != nil {
+		return msg, err
+	}
 	if msg.Code() != codes.Empty {
 		path, err = msg.Path()
 		if err != nil {
@@ -369,7 +347,7 @@ func (p *Proxy) handleCoAPMessage(ctx context.Context, buffer []byte) (*pool.Mes
 	return msg, nil
 }
 
-func (p *Proxy) encodeErrorResponse(msg *pool.Message, code codes.Code) []byte {
+func (p *Proxy) encodeErrorResponse(msg *pool.Message, err error) []byte {
 	resp := pool.NewMessage(msg.Context())
 	resp.SetToken(msg.Token())
 	resp.SetMessageID(msg.MessageID())
@@ -377,17 +355,21 @@ func (p *Proxy) encodeErrorResponse(msg *pool.Message, code codes.Code) []byte {
 	for _, opt := range msg.Options() {
 		resp.AddOptionBytes(opt.ID, opt.Value)
 	}
-	resp.SetCode(code)
+	cpe, ok := err.(COAPProxyError)
+	if !ok {
+		cpe = NewCOAPProxyError(codes.BadRequest, err)
+	}
+	resp.SetCode(cpe.StatusCode())
 	data, err := resp.MarshalWithEncoder(coder.DefaultCoder)
 	if err != nil {
-		p.logger.Error("Failed to marshal error CoAP message", slog.Any("err", err))
+		p.logger.Error("Failed to marshal error CoAP message", slog.String("err", err.Error()))
 		return nil
 	}
 	return data
 }
 
 func parseKey(msg *pool.Message) (string, error) {
-	authKey, err := msg.Options().GetString(message.URIQuery)
+	authKey, err := msg.Options().GetString(15)
 	if err != nil {
 		return "", err
 	}
