@@ -34,23 +34,25 @@ const (
 type Conn struct {
 	clientAddr *net.UDPAddr
 	serverConn *net.UDPConn
-	started    atomic.Bool // starts downUDP after first successful upstream write
+	started    atomic.Bool
 }
 
 type Proxy struct {
-	config  mgate.Config
-	session session.Handler
-	logger  *slog.Logger
-	connMap map[string]*Conn
-	mutex   sync.Mutex
+	config      mgate.Config
+	session     session.Handler
+	logger      *slog.Logger
+	interceptor Interceptor
+	connMap     map[string]*Conn
+	mutex       sync.Mutex
 }
 
-func NewProxy(config mgate.Config, handler session.Handler, logger *slog.Logger) *Proxy {
+func NewProxy(config mgate.Config, handler session.Handler, ic Interceptor, logger *slog.Logger) *Proxy {
 	return &Proxy{
-		config:  config,
-		session: handler,
-		logger:  logger,
-		connMap: make(map[string]*Conn),
+		config:      config,
+		session:     handler,
+		logger:      logger,
+		interceptor: ic,
+		connMap:     make(map[string]*Conn),
 	}
 }
 
@@ -157,8 +159,7 @@ func (p *Proxy) newConn(clientAddr *net.UDPAddr) (*Conn, error) {
 }
 
 func (p *Proxy) upUDP(conn *Conn, buffer []byte, l *net.UDPConn) {
-	msg, err := p.handleCoAPMessage(context.Background(), buffer)
-	if err != nil {
+	if msg, err := p.handleCoAPMessage(context.Background(), buffer); err != nil {
 		p.logger.Error("Failed to handle CoAP message", slog.Any("err", err))
 		data := p.encodeErrorResponse(msg, codes.BadRequest)
 		if len(data) > 0 {
@@ -168,6 +169,7 @@ func (p *Proxy) upUDP(conn *Conn, buffer []byte, l *net.UDPConn) {
 		}
 		return
 	}
+	fmt.Println("Running v.131")
 
 	if _, err := conn.serverConn.Write(buffer); err != nil {
 		return
@@ -309,16 +311,26 @@ func (p *Proxy) handleCoAPMessage(ctx context.Context, buffer []byte) (*pool.Mes
 	if err != nil {
 		return msg, err
 	}
-	authKey, err := parseKey(msg)
-	if err != nil {
-		return msg, err
+	if msg.Code() != codes.POST && msg.Code() != codes.GET {
+		return msg, nil
 	}
-	if msg.Code() != codes.Empty {
-		path, err = msg.Path()
+	if p.interceptor != nil {
+		msg, err = p.interceptor.Intercept(ctx, msg)
 		if err != nil {
 			return msg, err
 		}
 	}
+
+	authKey, err := parseKey(msg)
+	if err != nil {
+		return msg, err
+	}
+
+	path, err = msg.Path()
+	if err != nil {
+		return msg, err
+	}
+
 	ctx = session.NewContext(ctx, &session.Session{Password: []byte(authKey)})
 
 	if msg.Body() != nil {
@@ -369,7 +381,7 @@ func (p *Proxy) encodeErrorResponse(msg *pool.Message, code codes.Code) []byte {
 	resp.SetCode(code)
 	data, err := resp.MarshalWithEncoder(coder.DefaultCoder)
 	if err != nil {
-		p.logger.Error("Failed to marshal error CoAP message", slog.Any("err", err))
+		p.logger.Error("Failed to marshal error responsemessage", slog.String("err", err.Error()))
 		return nil
 	}
 	return data
